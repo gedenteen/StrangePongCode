@@ -35,17 +35,17 @@ public class MainPaddle : Paddle
     private readonly float minTimeToReact = 0.25f;
     private readonly float maxTimeToReact = 0.9f;
 
-    private void Awake()
+    private new void Awake()
     {
         base.Awake();
     }
 
-    private void Start()
+    private new void Start()
     {
         base.Start();
     }
 
-    private void OnDestroy()
+    private new void OnDestroy()
     {
         base.OnDestroy();
     }

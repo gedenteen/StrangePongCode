@@ -15,6 +15,7 @@ public class MainMenu : MonoBehaviour
     [SerializeField] private GameObject startPanelChoosingLocale;
     [SerializeField] private GameObject warningForEpileptics;
     [SerializeField] private TextMeshProUGUI mainLabel;
+    [SerializeField] private TextMeshProUGUI textLabel;
     [SerializeField] private GameObject buttonQuit;
     [SerializeField] private GameObject buttonCredits;
     [SerializeField] private CanvasGroup mainCanvasGroup;
@@ -55,6 +56,8 @@ public class MainMenu : MonoBehaviour
             startPanelChoosingLocale.SetActive(true);
             warningForEpileptics.SetActive(true);
         }
+
+        textLabel.text = "version " + Application.version;
 
         EventsManager.levelLoaded.AddListener(LevelWasLoaded);
         eventActivateMainGroup.AddListener(ActivateMainGroup);

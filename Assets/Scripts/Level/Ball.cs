@@ -187,7 +187,7 @@ public class Ball : MonoBehaviour
                 //Debug.Log($"Ball: OnCollisionEnter2D(): rb2d.velocity={rb2d.velocity} currentMoveSpeed={currentMoveSpeed} rb2d.velocity.magnitude={rb2d.velocity.magnitude}");
 
                 // Check for situation when players dispersed high speed of the Ball
-                if (currentMoveSpeed > 110f && !forciblyChangedDirection)
+                if (currentMoveSpeed > 70f && !forciblyChangedDirection)
                 {
                     Vector2 position = transform.position;
                     position.x = 0f;

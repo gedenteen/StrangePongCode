@@ -9,12 +9,12 @@ public class AdditionalPaddle : Paddle
         base.Awake();
     }
 
-    private void Start()
+    private new void Start()
     {
         base.Start();
     }
 
-    private void OnDestroy()
+    private new void OnDestroy()
     {
         base.OnDestroy();
     }

@@ -130,7 +130,7 @@ public class LevelManager : MonoBehaviour
             choosedModifiersFor1Player[LevelModifier.BossBigBase] = 1;
 
             hpPlayerLeft = defaultHp;
-            hpPlayerRight = 99;
+            hpPlayerRight = 55;
 
             AudioManager.instance.SetMusicForBossBigBase();
         }

@@ -11,5 +11,5 @@ public enum BuildPlatform
 
 public static class MyBuildSettings
 {
-    public static BuildPlatform currentBuildPlatform = BuildPlatform.Yandex;
+    public static BuildPlatform currentBuildPlatform = BuildPlatform.PC;
 }

@@ -12,6 +12,15 @@ public class PanelSettings : MonoBehaviour
     private void Awake()
     {
         EventsManager.levelLoaded.AddListener((int value) => myPanel.gameObject.SetActive(false));
-        eventActivate.AddListener((bool value) => myPanel.gameObject.SetActive(value));
+        eventActivate.AddListener(Activate);
+    }
+
+    public void Activate(bool value)
+    {
+        myPanel.gameObject.SetActive(value);
+        // if (value)
+        // {
+        //     Settings.instance.UpdateUi();
+        // }
     }
 }

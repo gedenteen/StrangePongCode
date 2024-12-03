@@ -32,7 +32,7 @@ public class BossBigBase : Paddle
     private readonly float minTimeToSpawnBall = 0.45f;
     private readonly float maxTimeToSpawnBall = 0.65f;
 
-    private void Awake()
+    private new void Awake()
     {
         base.Awake();
     }
