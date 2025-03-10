@@ -1,8 +1,10 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using Zenject;
 
 public class GameManager : MonoBehaviour
 {
@@ -14,7 +16,7 @@ public class GameManager : MonoBehaviour
     public int scorePlayer1;
     public int scorePlayer2;
 
-    [Header("References to objects, set them via Inspector")]
+    [Header("References to objects")]
     public ScoreText scoreTextLeft;
     public ScoreText scoreTextRight;
     //public TextMeshProUGUI winText;
@@ -22,8 +24,11 @@ public class GameManager : MonoBehaviour
     public StarsSpawner starsSpawner;
     public MainPaddle rightPaddle;
     public BossBigBase bossBigBase;
+    public BossBigBarrier bossBigBarrier;
 
-    private bool levelIsEnd = false;
+    [Inject] private ConfigOfLevels _configOfLevels;
+
+    private bool _isLevelEnd = false;
 
     public void Initialize()
     {
@@ -79,7 +84,7 @@ public class GameManager : MonoBehaviour
             starsSpawner.spawnStarsGhost = false;
         }
 
-        if (levelModifiers.ContainsKey(LevelModifier.StarTriggerChangeBallState) && levelModifiers[LevelModifier.StarTriggerChangeBallState] > 0)
+        if (levelModifiers.ContainsKey(LevelModifier.StarTriggerMakeBallDangerous) && levelModifiers[LevelModifier.StarTriggerMakeBallDangerous] > 0)
         {
             starsSpawner.spawnStarsBallState = true;
         }
@@ -88,11 +93,27 @@ public class GameManager : MonoBehaviour
             starsSpawner.spawnStarsBallState = false;
         }
 
+        if (levelModifiers.ContainsKey(LevelModifier.ForceSetChromaticAberration) && levelModifiers[LevelModifier.ForceSetChromaticAberration] > 0)
+        {
+            Settings.instance.SetChromaticAverrationValue(_configOfLevels.ValueOfForceSetChromaticAbberration);
+        }
+
+        if (levelModifiers.ContainsKey(LevelModifier.ForceSetBloom) && levelModifiers[LevelModifier.ForceSetBloom] > 0)
+        {
+            Settings.instance.SetBloomValue(_configOfLevels.ValueOfForceSetBloom);
+        }
+
         if (levelModifiers.ContainsKey(LevelModifier.BossBigBase) && levelModifiers[LevelModifier.BossBigBase] > 0)
         {
             rightPaddle.gameObject.SetActive(false); // disable default enemy Paddle
             ball.gameObject.SetActive(false); //disable default Ball for levels 1-4
             bossBigBase.gameObject.SetActive(true); // and activate BOSS BIG BASE
+        }
+
+        if (levelModifiers.ContainsKey(LevelModifier.BossBigBarrier) && levelModifiers[LevelModifier.BossBigBarrier] > 0)
+        {
+            rightPaddle.gameObject.SetActive(false); // disable default enemy Paddle
+            bossBigBarrier.gameObject.SetActive(true); // and activate BOSS BIG BASE
         }
 
         scorePlayer1 = LevelManager.instance.hpPlayerLeft;
@@ -155,31 +176,45 @@ public class GameManager : MonoBehaviour
 
     private void OnLevelEnds(int winnerId)
     {
-        if (levelIsEnd)
+        if (_isLevelEnd)
         {
             return;
         }
-        levelIsEnd = true;
+        _isLevelEnd = true;
 
         Debug.Log($"OnGameEnds: winner {winnerId}");
 
         // If it's a level with a BossBigBase and the player wins
-        if (LevelManager.instance.GetLevelModifiers()[LevelModifier.BossBigBase] != 0 && winnerId == 1)
-        {
-            BossBigBase bossBigBase = FindObjectOfType<BossBigBase>();
-            if (bossBigBase == null)
-            {
-                Debug.LogError("GameManager: OnGameEnds: can't find BossBigBase (as component)");
-                return;
-            }
+        Dictionary<LevelModifier, byte> levelMods = LevelManager.instance.GetLevelModifiers();
 
+        if (winnerId == 2)
+        {
+            StartCoroutine(FinishLevel(winnerId, 0f));
+            return;
+        }
+
+        // Assert winnerId = 1
+        if (levelMods.ContainsKey(LevelModifier.BossBigBase) && levelMods[LevelModifier.BossBigBase] != 0)
+        {
             bossBigBase.Die();
             StartCoroutine(FinishLevel(winnerId, 4f));
-            StartCoroutine(DoTheEnd(6f));
+        }
+        else if (levelMods.ContainsKey(LevelModifier.BossBigBarrier) && levelMods[LevelModifier.BossBigBarrier] != 0)
+        {
+            ball.gameObject.SetActive(false);
+            Destroy(ball);
+
+            bossBigBarrier.Die();
+            StartCoroutine(FinishLevel(winnerId, 4f));
         }
         else
         {
             StartCoroutine(FinishLevel(winnerId, 0f));
+        }
+            
+        if (LevelManager.instance.currentLevel == _configOfLevels.Levels.Count - 1)
+        {
+            StartCoroutine(DoTheEnd(6f));
         }
     }
 
@@ -205,7 +240,7 @@ public class GameManager : MonoBehaviour
         if (winnerId == 1)
         {
             AudioManager.instance.PlayWinSound();
-            if (LevelManager.instance.playMode == PlayMode.PlayerVsAi)
+            if (LevelManager.instance.playMode == PlayMode.PlayerVsAi_Campaign)
             {
                 DifficultyManager.instance.ChangePlayerSkillValue(true);
             }
@@ -213,13 +248,16 @@ public class GameManager : MonoBehaviour
         else
         {
             AudioManager.instance.PlayLooseSound();
-            if (LevelManager.instance.playMode == PlayMode.PlayerVsAi)
+            if (LevelManager.instance.playMode == PlayMode.PlayerVsAi_Campaign)
             {
                 DifficultyManager.instance.ChangePlayerSkillValue(false);
             }
         }
 
+        StatusOfLevelEnd status = winnerId == 1 ? StatusOfLevelEnd.Player1Won : StatusOfLevelEnd.Player2Won;
+
         EventsManager.levelEnd.Invoke();
+        EventsManager.levelEndWithStatus.Invoke(status);
         LevelPauseMenu.eventLevelEnd.Invoke(winnerId);
         LevelPauseMenu.eventActivateMainGroup.Invoke(true);
     }

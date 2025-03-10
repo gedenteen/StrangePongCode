@@ -6,6 +6,7 @@ using UnityEngine.Events;
 using UnityEngine.SceneManagement;
 using UnityEngine.Localization;
 using UnityEngine.UI;
+using Zenject;
 
 public class LevelPauseMenu : MonoBehaviour
 {
@@ -17,6 +18,7 @@ public class LevelPauseMenu : MonoBehaviour
     [SerializeField] private CanvasGroup mainCanvasGroup;
     [SerializeField] private TextMeshProUGUI mainLabel;
     [SerializeField] private Button buttonRevengeOrNextLevel;
+    [SerializeField] private Button buttonRestart;
     [SerializeField] private TextMeshProUGUI textRevengeOrNextLevel;
     [SerializeField] private GameObject buttonContinue;
     [SerializeField] private GameObject buttonQuit;
@@ -29,6 +31,8 @@ public class LevelPauseMenu : MonoBehaviour
     [SerializeField] private LocalizedString lsYouLost;
     [SerializeField] private LocalizedString lsRevenge;
     [SerializeField] private LocalizedString lsNextLevel;
+
+    [Inject] private ConfigOfLevels _configOfLevelModifiers;
 
     private bool isActive = true;
 
@@ -44,9 +48,18 @@ public class LevelPauseMenu : MonoBehaviour
         buttonQuit.SetActive(false);
 #endif
 
+        buttonRestart.onClick.AddListener(ReloadScene);
         eventActivateMainGroup.AddListener(ActivateThisMenu);
         eventLevelEnd.AddListener(OnLevelEnd);
         eventShowPanelEnd.AddListener(ShowPanelTheEnd);
+    }
+
+    private void OnDestroy()
+    {
+        buttonRestart.onClick.RemoveListener(ReloadScene);
+        eventActivateMainGroup.RemoveListener(ActivateThisMenu);
+        eventLevelEnd.RemoveListener(OnLevelEnd);
+        eventShowPanelEnd.RemoveListener(ShowPanelTheEnd);
     }
 
     void Update()
@@ -85,31 +98,26 @@ public class LevelPauseMenu : MonoBehaviour
 
         buttonContinue.SetActive(false);
 
-        if (LevelManager.instance.currentLevel == 5 && winnerId == 1) // TODO: make it check more flexible
+        if (winnerId == 1
+            &&
+            LevelManager.instance.currentLevel == _configOfLevelModifiers.Levels.Count - 1)
         {
             // End of the game - don't show button with "Next level"
             return;
         }
 
-        buttonRevengeOrNextLevel.gameObject.SetActive(true);
 
         if (LevelManager.instance.playMode == PlayMode.PlayerVsPlayer)
         {
+            buttonRevengeOrNextLevel.gameObject.SetActive(true);
             textRevengeOrNextLevel.text = lsRevenge.GetLocalizedString();
             buttonRevengeOrNextLevel.onClick.AddListener(LevelManager.instance.LoadLevelFor2Players);
         }
-        else if (LevelManager.instance.playMode == PlayMode.PlayerVsAi)
+        else if (LevelManager.instance.playMode == PlayMode.PlayerVsAi_Campaign && winnerId == 1)
         {
-            if (winnerId == 1)
-            {
-                textRevengeOrNextLevel.text = lsNextLevel.GetLocalizedString();
-                buttonRevengeOrNextLevel.onClick.AddListener(LevelManager.instance.LoadNextLevel);
-            }
-            else
-            {
-                textRevengeOrNextLevel.text = lsRevenge.GetLocalizedString();
-                buttonRevengeOrNextLevel.onClick.AddListener(LevelManager.instance.LoadCurrentLevel);
-            }
+            buttonRevengeOrNextLevel.gameObject.SetActive(true);
+            textRevengeOrNextLevel.text = lsNextLevel.GetLocalizedString();
+            buttonRevengeOrNextLevel.onClick.AddListener(LevelManager.instance.LoadNextLevel);
         }
     }
 
@@ -124,7 +132,9 @@ public class LevelPauseMenu : MonoBehaviour
             else
                 Debug.LogError($"LevelPauseMenu: ChangeTextOfMainLabel: unexpected winnerId={winnerId}");
         }
-        else if (LevelManager.instance.playMode == PlayMode.PlayerVsAi)
+        else if (LevelManager.instance.playMode == PlayMode.PlayerVsAi_Campaign
+                 ||
+                 LevelManager.instance.playMode == PlayMode.PlayerVsAi_CustomBattle)
         {
             if (winnerId == 1)
                 mainLabel.text = lsYouWon.GetLocalizedString();
@@ -144,9 +154,8 @@ public class LevelPauseMenu : MonoBehaviour
     public void ReturnToMainMenu()
     {
         Time.timeScale = 1f;
-        SceneManager.LoadScene(0);
-        MainMenu.instance.ActivateMainGroup(true);
-        LevelManager.instance.LoadBackgroundScene();
+        SceneManager.LoadScene(SceneName.MainMenu.ToString());
+        LevelManager.instance.LoadMainMenuAndLevel();
         AudioManager.instance.PlayMainMenuMusic();
         Destroy(gameObject);
     }
@@ -159,5 +168,14 @@ public class LevelPauseMenu : MonoBehaviour
     public void ShowPanelTheEnd()
     {
         panelTheEnd.SetActive(true);
+    }
+
+    private void ReloadScene()
+    {
+        SceneManager.LoadScene(SceneManager.GetActiveScene().name); //LevelManager.instance.LoadCurrentLevel();
+        AudioManager.instance.PlayCurrentMusicAgain();
+        EventsManager.levelLoaded.Invoke(LevelManager.instance.currentLevel);
+        Time.timeScale = 1f;
+        PanelSettings.eventActivate.Invoke(false);
     }
 }

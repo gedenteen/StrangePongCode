@@ -14,10 +14,14 @@ public class ExplanationScreen : MonoBehaviour
     [SerializeField] private GameObject cellTriggerDirection;
     [SerializeField] private GameObject cellTriggerMusic;
     [SerializeField] private GameObject cellTriggerBallState;
+    [SerializeField] private GameObject cellChromaticAberration;
     [SerializeField] private GameObject cellAdditionalPaddle;
     [SerializeField] private GameObject cellMakeBallDangerousAfterHitting;
     [SerializeField] private GameObject cellBossBigBase;
     [SerializeField] private GameObject cellGhost;
+    [SerializeField] private GameObject cellTwitching;
+    [SerializeField] private GameObject cellBloom;
+    [SerializeField] private GameObject cellBossBigBarrier;
 
     [Header("Localization")]
     [SerializeField] private LocalizedString lsPlayerVsPlayer;
@@ -41,9 +45,14 @@ public class ExplanationScreen : MonoBehaviour
         {
             mainText.text = lsPlayerVsPlayer.GetLocalizedString();
         }
-        else if (LevelManager.instance.playMode == PlayMode.PlayerVsAi)
+        else if (LevelManager.instance.playMode == PlayMode.PlayerVsAi_Campaign)
         {
-            mainText.text = String.Concat(lsLevel.GetLocalizedString(), " ", LevelManager.instance.currentLevel.ToString());
+            mainText.text = String.Concat(lsLevel.GetLocalizedString(), " ", (LevelManager.instance.currentLevel + 1).ToString());
+            cellPlayerRight.SetActive(false);
+        }
+        else if (LevelManager.instance.playMode == PlayMode.PlayerVsAi_CustomBattle)
+        {
+            mainText.text = "Custom battle";
             cellPlayerRight.SetActive(false);
         }
 
@@ -60,9 +69,14 @@ public class ExplanationScreen : MonoBehaviour
             cellTriggerMusic.SetActive(false);
         }
 
-        if (!levelModifiers.ContainsKey(LevelModifier.StarTriggerChangeBallState) || levelModifiers[LevelModifier.StarTriggerChangeBallState] == 0)
+        if (!levelModifiers.ContainsKey(LevelModifier.StarTriggerMakeBallDangerous) || levelModifiers[LevelModifier.StarTriggerMakeBallDangerous] == 0)
         {
             cellTriggerBallState.SetActive(false);
+        }
+
+        if (!levelModifiers.ContainsKey(LevelModifier.ForceSetChromaticAberration) || levelModifiers[LevelModifier.ForceSetChromaticAberration] == 0)
+        {
+            cellChromaticAberration.SetActive(false);
         }
 
         if (!levelModifiers.ContainsKey(LevelModifier.AdditionalPaddle) || levelModifiers[LevelModifier.AdditionalPaddle] == 0)
@@ -85,21 +99,29 @@ public class ExplanationScreen : MonoBehaviour
             cellGhost.SetActive(false);
         }
 
-        // Show screen and wait for any key
-        bgImage.SetActive(true);
-        StartCoroutine(WaitForAnyKey());
-    }
-
-    private IEnumerator WaitForAnyKey()
-    {
-        while (!Input.anyKeyDown)
+        if (!levelModifiers.ContainsKey(LevelModifier.TwitchingIncreasesImpactOnBall) || levelModifiers[LevelModifier.TwitchingIncreasesImpactOnBall] == 0)
         {
-            yield return null;
+            cellTwitching.SetActive(false);
         }
 
-        bgImage.SetActive(false);
-        Debug.Log("ExplanationScreen: WaitForAnyKey(): key is pressed");
+        if (!levelModifiers.ContainsKey(LevelModifier.ForceSetBloom) || levelModifiers[LevelModifier.ForceSetBloom] == 0)
+        {
+            cellBloom.SetActive(false);
+        }
 
+        if (!levelModifiers.ContainsKey(LevelModifier.BossBigBarrier) || levelModifiers[LevelModifier.BossBigBarrier] == 0)
+        {
+            cellBossBigBarrier.SetActive(false);
+        }
+
+        // Show screen and wait for any key
+        bgImage.SetActive(true);
+    }
+
+    public void StartLevel()
+    {
+        Debug.Log("ExplanationScreen: StartLevel: begin");
+        bgImage.SetActive(false);
         EventsManager.levelStart.Invoke();
     }
 }

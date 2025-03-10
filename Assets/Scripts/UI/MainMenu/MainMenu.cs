@@ -2,22 +2,26 @@ using UnityEngine;
 using TMPro;
 using UnityEngine.Events;
 using UnityEngine.Localization;
+using UnityEngine.UI;
+using System.Collections.Generic;
+using Zenject;
 
 public class MainMenu : MonoBehaviour
 {
-    public static MainMenu instance;
-    public static UnityEvent eventHideMenu = new UnityEvent();
-    public static UnityEvent<bool> eventActivateMainGroup = new UnityEvent<bool>();
-
-    private bool isActive = true;
-
-    [Header("References")]
+    [Header("References to child objects: panels")]
+    [SerializeField] private GameObject _panelPrimary;
+    [SerializeField] private GameObject _panelOnePlayer;
+    [SerializeField] private GameObject _panelTwoPlayers;
+    
+    [Header("References to child objects: other")]
     [SerializeField] private GameObject startPanelChoosingLocale;
     [SerializeField] private GameObject warningForEpileptics;
     [SerializeField] private TextMeshProUGUI mainLabel;
     [SerializeField] private TextMeshProUGUI textLabel;
     [SerializeField] private GameObject buttonQuit;
     [SerializeField] private GameObject buttonCredits;
+    [SerializeField] private Button buttonSettings;
+    [SerializeField] private Button buttonDiscord;
     [SerializeField] private CanvasGroup mainCanvasGroup;
 
     [Header("Localized strings")]
@@ -27,22 +31,17 @@ public class MainMenu : MonoBehaviour
     [SerializeField] private LocalizedString lsYouLost;
     [SerializeField] private LocalizedString lsBotsDonePlaying;
 
+    [Inject] private GameConfig _gameConfig;
+
+    // Private fields
+    private List<GameObject> _listOfPanels = new List<GameObject>();
+
     // Private const fields
     private readonly string pp_selectedLocale = "SelectedLocale";
 
     private void Awake()
     {
-        if (instance == null)
-        {
-            instance = this;
-            DontDestroyOnLoad(gameObject);
-        }
-        else
-        {
-            Destroy(gameObject);
-            return;
-        }
-
+        // Deactivaing/activating objects
 #if UNITY_WEBGL
         buttonQuit.SetActive(false);
 #endif
@@ -57,10 +56,23 @@ public class MainMenu : MonoBehaviour
             warningForEpileptics.SetActive(true);
         }
 
+        // Show game version
         textLabel.text = "version " + Application.version;
 
+        // Fill _listOfPlayers
+        _listOfPanels.Add(_panelPrimary);
+        _listOfPanels.Add(_panelOnePlayer);
+        _listOfPanels.Add(_panelTwoPlayers);
+
+        // Add listeners
+        buttonSettings.onClick.AddListener(OnClickButtonSettings);
+        buttonDiscord.onClick.AddListener(OnClickButtonDiscord);
         EventsManager.levelLoaded.AddListener(LevelWasLoaded);
-        eventActivateMainGroup.AddListener(ActivateMainGroup);
+    }
+
+    private void OnDestroy()
+    {
+        buttonSettings.onClick.RemoveListener(OnClickButtonSettings);
     }
 
     private void LevelWasLoaded(int level)
@@ -73,7 +85,6 @@ public class MainMenu : MonoBehaviour
     public void ActivateMainGroup(bool value)
     {
         mainCanvasGroup.gameObject.SetActive(value);
-        isActive = value;
     }
 
     public void ChangeTextOfMainLabel(string text)
@@ -93,24 +104,49 @@ public class MainMenu : MonoBehaviour
         }
     }
 
-    public void Singleplayer()
-    {
-        LoadSignleplayerLevel(1);
-    }
-
-    public void LoadSignleplayerLevel(int levelNumber)
-    {
-        if (levelNumber < 0)
-        {
-            Debug.LogError($"MainMenu: LoadSignleplayerLevel(): invalid levelNumber={levelNumber}");
-        }
-
-        LevelManager.instance.LoadLevelFor1Player(levelNumber, true);
-    }
-
     public void OnButtonQuitClicked()
     {
         Debug.Log("MainMenu: OnButtonQuitClicked");
         Application.Quit();
     }
+
+    private void OnClickButtonSettings()
+    {
+        Debug.Log("MainMenu: OnClickButtonSettings");
+        PanelSettings.eventActivate.Invoke(true); // TODO: через zenject это делать
+    }
+
+    private void OnClickButtonDiscord()
+    {
+        Application.OpenURL(_gameConfig.DiscordServerUrl);
+    }
+
+
+    #region Methods for change active panel
+
+    private void ActivateOnlyCertainPanel(GameObject targetPanel)
+    {
+        for (int i = 0; i < _listOfPanels.Count; i++)
+        {
+            GameObject panel = _listOfPanels[i];
+            panel.SetActive(panel == targetPanel);
+        }
+    }
+
+    public void ActivatePanelPrimary()
+    {
+        ActivateOnlyCertainPanel(_panelPrimary);
+    }
+
+    public void ActivatePanelOnePlayer()
+    {
+        ActivateOnlyCertainPanel(_panelOnePlayer);
+    }
+
+    public void ActivatePanelTwoPlayers()
+    {
+        ActivateOnlyCertainPanel(_panelTwoPlayers);
+    }
+
+    #endregion
 }

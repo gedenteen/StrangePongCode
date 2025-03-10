@@ -1,39 +1,60 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Zenject;
 
 public class MainPaddle : Paddle
 {
-    // Public fields
-    public float moveSpeed = 2f;
-    public float aiDeadZoneY = 0.8f;
-    public float timeForDoNothing = 0.2f;
-    public float timeToReact = 0.5f;
-    public AdditionalPaddle additionalPaddle = null;
+    [Header("Changeable parameters")]
+    [SerializeField] private float moveSpeed = 2f;
+    [SerializeField] private float aiDeadZoneY = 0.8f;
+    [SerializeField] private float timeForDoNothing = 0.2f;
+    [SerializeField] private float timeToReact = 0.5f;
 
-    // Private fields
-    private float upperBound, bottomBound; //bounds with walls
-    private float inputByUiButtons = 0f;
-    private int direction = 0; //direction to move
-    private float moveSpeedMultiplier = 1f;
-    private float timerToDoNothing = 0;
-    private bool thisPlayerIsAi = false; //set it in Awake()
-    private bool delayBeforeAction = true; // field for AI
-    private bool levelEnd = false;
+    [Header("Referencess to my objects")]
+    [SerializeField] private AdditionalPaddle additionalPaddle;
 
-    [Header("Refs to scene objects")]
+    [Header("Referencess to scene objects")]
     [SerializeField] private BoxCollider2D upperWall;
     [SerializeField] private BoxCollider2D bottomWall;
+
+    [Inject] KeyBindingsController _keyBindingsController;
+
+    // Private fields
+    private float _upperBound, _bottomBound; //bounds with walls
+    private float _inputByUiButtons = 0f;
+    private int _directionToMove = 0;
+    private float _moveSpeedMultiplier = 1f;
+    private float _timerToDoNothing = 0;
+    private bool _thisPlayerIsAi = false; //set it in Awake()
+    private bool _delayBeforeAction = true; // field for AI
+    private bool _levelEnd = false;
 
     // Private const fields
     private const string player1InputName = "MovePlayer1";
     private const string player2InputName = "MovePlayer2";
-    private readonly float minAiDeadZoneY = 0.5f;
-    private readonly float maxAiDeadZoneY = 1.4f;
+    private readonly float minAiDeadZoneY = 0.6f;
+    private readonly float maxAiDeadZoneY = 1.2f;
     private readonly float minTimeForDoNothing = 0.15f;
     private readonly float maxTimeForDoNothing = 0.35f;
-    private readonly float minTimeToReact = 0.25f;
-    private readonly float maxTimeToReact = 0.9f;
+    private readonly float minTimeToReact = 0.5f;
+    private readonly float maxTimeToReact = 1f;
+
+    // Private fields for idle move
+    private float _idleMovementTimer = 0f;
+    private float _idleMovementInterval = 1f / 4.4f; // time between direction switches. 
+    private int _idleMoveDirection = 1; 
+
+    // Private fields for delay before AI reacts to dangerous state
+    private float _dangerousStateDelay = 0.3f; // You can tweak this
+    private float _dangerousStateTimer = 0f;
+
+    // Store the previous ball state to detect changes
+    private BallState _prevBallState;
+
+    private float _previousMoveDirection = 0f;
+    private bool _isJerkingIncreasesImpactOnBall = false;
+    private uint _countOfTwitches = 0;
 
     private new void Awake()
     {
@@ -43,6 +64,7 @@ public class MainPaddle : Paddle
     private new void Start()
     {
         base.Start();
+        _prevBallState = GameManager.instance.ball.state; 
     }
 
     private new void OnDestroy()
@@ -52,14 +74,21 @@ public class MainPaddle : Paddle
 
     private void Update()
     {
-        if (levelEnd)
+        if (_levelEnd)
         {
             return;
         }
 
-        if (thisPlayerIsAi)
+        // Check if ball state changed from usual to dangerous
+        if (_prevBallState == BallState.usual && GameManager.instance.ball.state == BallState.dangerous)
         {
+            // Start delay timer
+            _dangerousStateTimer = _dangerousStateDelay;
+        }
+        _prevBallState = GameManager.instance.ball.state;
 
+        if (_thisPlayerIsAi)
+        {
             DetermineBehaviorOfAi();
         }
         else
@@ -71,19 +100,9 @@ public class MainPaddle : Paddle
 
     public void Initialize()
     {
-        thisPlayerIsAi = LevelManager.instance.IsThisPlayerAi(id);
+        _thisPlayerIsAi = LevelManager.instance.IsThisPlayerAi(id);
 
-        var levelModifiers = LevelManager.instance.GetLevelModifiers();
-        if (levelModifiers.ContainsKey(LevelModifier.AdditionalPaddle) && levelModifiers[LevelModifier.AdditionalPaddle] > 0)
-        {
-            additionalPaddle.gameObject.SetActive(true);
-            Debug.Log("MainPaddle: Initialize(): i am activate additional Paddle");
-        }
-        else
-        {
-            additionalPaddle.gameObject.SetActive(false);
-            additionalPaddle = null;
-        }
+        HandleLevelModifiers();
 
         float playerSkill = DifficultyManager.instance.GetRelativeSkillOfPlayer();
 
@@ -97,35 +116,76 @@ public class MainPaddle : Paddle
         Debug.Log($"MainPaddle: Initialize(): playerSkill={playerSkill} aiDeadZoneY={aiDeadZoneY}");
         Debug.Log($"MainPaddle: Initialize(): timeForDoNothing={timeForDoNothing} timeToReact={timeToReact}");
 
-        upperBound = upperWall.transform.position.y - upperWall.bounds.extents.y;
-        bottomBound = bottomWall.transform.position.y + bottomWall.bounds.extents.y;
-        Debug.Log($"MainPaddle: Initialize: upperWall.transform.position.y ={upperWall.transform.position.y} upperBound={upperBound}");
-        Debug.Log($"MainPaddle: Initialize: bottomWall.transform.position.y ={bottomWall.transform.position.y} bottomBound={bottomBound}");
+        _upperBound = upperWall.transform.position.y - upperWall.bounds.extents.y;
+        _bottomBound = bottomWall.transform.position.y + bottomWall.bounds.extents.y;
+        Debug.Log($"MainPaddle: Initialize: upperWall.transform.position.y ={upperWall.transform.position.y} _upperBound={_upperBound}");
+        Debug.Log($"MainPaddle: Initialize: bottomWall.transform.position.y ={bottomWall.transform.position.y} _bottomBound={_bottomBound}");
 
         EventsManager.levelEnd.AddListener(() =>
         {
-            levelEnd = true;
+            _levelEnd = true;
             Move(0f);
         });
+    }
+
+    private void HandleLevelModifiers()
+    {
+        var levelModifiers = LevelManager.instance.GetLevelModifiers();
+
+        if (levelModifiers.ContainsKey(LevelModifier.AdditionalPaddle)
+            && levelModifiers[LevelModifier.AdditionalPaddle] > 0)
+        {
+            additionalPaddle.gameObject.SetActive(true);
+            //Debug.Log("MainPaddle: Initialize(): i am activate additional Paddle");
+        }
+        else
+        {
+            additionalPaddle.gameObject.SetActive(false);
+            additionalPaddle = null;
+        }
+
+        if (levelModifiers.ContainsKey(LevelModifier.TwitchingIncreasesImpactOnBall) 
+            && levelModifiers[LevelModifier.TwitchingIncreasesImpactOnBall] > 0)
+        {
+            _isJerkingIncreasesImpactOnBall = true;
+        }
+        else
+        {
+            _isJerkingIncreasesImpactOnBall = false;
+        }
     }
 
     private float GetInput()
     {
         float movement = 0f;
 
-        if (inputByUiButtons != 0f)
+        if (_inputByUiButtons != 0f)
         {
-            movement = inputByUiButtons;
+            movement = _inputByUiButtons;
         }
         else
         {
             switch (id)
             {
                 case 1:
-                    movement = Input.GetAxis(player1InputName);
+                    if (Input.GetKey(_keyBindingsController.KeyForLeftPlayerUp))
+                    {
+                        movement = 1f;
+                    }
+                    else if (Input.GetKey(_keyBindingsController.KeyForLeftPlayerDown))
+                    {
+                        movement = -1f;
+                    }
                     break;
                 case 2:
-                    movement = Input.GetAxis(player2InputName);
+                    if (Input.GetKey(_keyBindingsController.KeyForRightPlayerUp))
+                    {
+                        movement = 1f;
+                    }
+                    else if (Input.GetKey(_keyBindingsController.KeyForRightPlayerDown))
+                    {
+                        movement = -1f;
+                    }
                     break;
                 default:
                     Debug.LogError($"Unexpected id={id} in GetInput() for Paddle");
@@ -146,7 +206,7 @@ public class MainPaddle : Paddle
 
         // If ball moves
         float xDifference = ballPos.x - targetTransform.position.x; //x-distance between ball and this paddle
-        float timeToReach; // time ro reach this paddle
+        float timeToReach; // time to reach this paddle
         float yDifference; //y-distance taking into account the movement of the ball
 
         if (ballVelocity != Vector2.zero)
@@ -168,129 +228,166 @@ public class MainPaddle : Paddle
     // Method for AI: determine whether it is necessary to move for this Paddle
     public void DetermineBehaviorOfAi()
     {
-        // Unbeatable AI code:
-        //transform.position = new Vector2(startPosition.x, ballPos.y); 
-        //return;
-
-        if (timerToDoNothing > 0)
+        if (_timerToDoNothing > 0)
         {
-            timerToDoNothing = Mathf.Clamp(timerToDoNothing - Time.deltaTime, 0f, 2f);
-            Move(direction);
+            _timerToDoNothing = Mathf.Clamp(_timerToDoNothing - Time.deltaTime, 0f, 2f);
+            Move(_directionToMove);
             return;
         }
 
         Vector2 ballPos = GameManager.instance.ball.transform.position;
         Vector2 ballVelocity = GameManager.instance.ball.rb2d.velocity;
 
-        // Does Ball flies to another Paddle?
+        // If ball is NOT flying towards me, we do the "idle movement"
         if ((id == 1 && ballVelocity.x > 0) || (id == 2 && ballVelocity.x < 0))
         {
-            // If yes - hold position
-            direction = 0; // no movement
-            Move(direction);
-            delayBeforeAction = true;
+            DoIdleMovement();
+            _delayBeforeAction = true;
             return;
         }
         else
         {
-            // If no, check this:
-            // if Ball rotates and no moves, then this paddle should go closer to Ball.
-            // If Ball moves then check for delayBeforeAction. If there is no delay, then start calculating and movement
+            // If ball rotates in place => we keep _delayBeforeAction = true
             if (ballVelocity.x == 0)
             {
-                delayBeforeAction = true;
+                _delayBeforeAction = true;
             }
-            else if (delayBeforeAction)
+            else if (_delayBeforeAction)
             {
                 // If this Paddle have delayBeforeAction, then hold position.
                 // Explanation: if the paddle starts action immediately after the ball flies in this direction, it will look unfair to the player.
                 // To avoid this, I made a delay before action (in other words, to make the AI not react immediately).
-                direction = 0;  // no movement
-                Move(direction);
-                timerToDoNothing = timeToReact;
-                delayBeforeAction = false;
+                _directionToMove = 0;  // no movement
+                Move(_directionToMove);
+                _timerToDoNothing = timeToReact;
+                _delayBeforeAction = false;
                 return;
             }
         }
 
-        DetermineMovementOfAI(ballPos, ballVelocity);
+        DetermineMovementOfAi(ballPos, ballVelocity);
     }
 
     // Method for AI: determine movement for this Paddle
-    private void DetermineMovementOfAI(Vector2 ballPos, Vector2 ballVelocity)
+    private void DetermineMovementOfAi(Vector2 ballPos, Vector2 ballVelocity)
     {
+        // If the ball is in dangerous state and we still have delay => do not move
+        if (GameManager.instance.ball.state == BallState.dangerous && _dangerousStateTimer > 0f)
+        {
+            _dangerousStateTimer -= Time.deltaTime;
+            _directionToMove = 0;
+            Move(_directionToMove);
+            return;
+        }
+
         float yDifference = CalculateYDifference(ballPos, ballVelocity, transform);
 
-        if (additionalPaddle is not null)
+        if (additionalPaddle != null)
         {
             // If this paddle have additional paddle, then calculate yDiffierence for additional paddle
             // And choose minimal yDifference
             float temp = CalculateYDifference(ballPos, ballVelocity, additionalPaddle.transform);
             if (Mathf.Abs(temp) < Mathf.Abs(yDifference))
             {
-                // Rewrite yDifference. And set minus, because we need move to different direction as MainPaddle
+                // Rewrite yDifference. And set minus, because we need move to opposite direction
                 yDifference = -temp;
             }
         }
 
         if (Mathf.Abs(yDifference) > aiDeadZoneY && GameManager.instance.ball.state == BallState.usual)
         {
-            if (GameManager.instance.ball.state == BallState.usual)
-            {
-                direction = yDifference > 0 ? 1 : -1;
-                timerToDoNothing = timeForDoNothing;
-            }
+            _directionToMove = yDifference > 0 ? 1 : -1;
+            _timerToDoNothing = timeForDoNothing;
         }
         else if (GameManager.instance.ball.state == BallState.dangerous)
         {
             if (Mathf.Abs(yDifference) < boundY * 2)
             {
                 // Check does the Paddle rest against the Wall??
-                direction = yDifference > 0 ? -1 : 1;
-                timerToDoNothing = timeForDoNothing;
+                _directionToMove = yDifference > 0 ? -1 : 1;
+                _timerToDoNothing = timeForDoNothing;
             }
             else
             {
                 // Ball is far away enough, don't move
-                direction = 0;
-                timerToDoNothing = timeForDoNothing * 3;
+                _directionToMove = 0;
+                _timerToDoNothing = timeForDoNothing * 3;
             }
         }
         else
         {
-            direction = 0;
+            _directionToMove = 0;
         }
 
-        // TODO: check for walls
-        // if (direction == 1)
-        // {
-        //     float dif = upperBound - (transform.position.y + boundY);
-        //     Debug.Log($"MainPaddle: DetermineMovementOfAI: dif={dif}");
-        // }
-        // else if (direction == -1)
-        // {
-        //     float dif = bottomBound - (transform.position.y - boundY);
-        //     Debug.Log($"MainPaddle: DetermineMovementOfAI: dif={dif}");
-        // }
+        Move(_directionToMove);
+    }
 
-        Move(direction);
+    // Method to make the paddle "idle move" up and down when the ball is not flying towards it
+    private void DoIdleMovement()
+    {
+        // Timer for direction toggling
+        _idleMovementTimer += Time.deltaTime;
+        if (_idleMovementTimer >= _idleMovementInterval)
+        {
+            _idleMovementTimer = 0f;
+            // Toggle direction from 1 to -1 or -1 to 1
+            _idleMoveDirection = -_idleMoveDirection;
+        }
 
+        Move(_idleMoveDirection);
     }
 
     private void Move(float movement)
     {
         Vector2 velo = rb2d.velocity;
-        velo.y = movement * moveSpeedMultiplier * moveSpeed;
+        velo.y = movement * _moveSpeedMultiplier * moveSpeed;
         rb2d.velocity = velo;
+
+        HandleTwitching(movement);
 
         if (additionalPaddle != null)
         {
+            // We'll invert the velocity for the additional paddle
             additionalPaddle.Move(-velo);
+        }
+    }
+
+    private void HandleTwitching(float movement) // подергивания вниз-вверх
+    {
+        if (!_isJerkingIncreasesImpactOnBall)
+        {
+            return;
+        }
+
+        // Debug.Log($"MainPaddle: Move: movement={movement} " + 
+        //     $"_previousMoveDirection={_previousMoveDirection}");
+
+        if ((_previousMoveDirection > 0.1f && movement < -0.1f)
+            ||
+            (_previousMoveDirection < -0.1f && movement > 0.1f))
+        {
+            _countOfTwitches++;
+            //Debug.Log($"MainPaddle: Move: new _countOfJerks={_countOfTwitches}");
+
+            if (additionalPaddle != null)
+            {
+                BallAccelerator.IncreaseSpeedSummand(2);
+                additionalPaddle.BallAccelerator.IncreaseSpeedSummand(2);
+            }
+            else
+            {
+                BallAccelerator.IncreaseSpeedSummand(1);
+            }
+        }
+
+        if (movement > 0.1f || movement < -0.1f)
+        {
+            _previousMoveDirection = movement;
         }
     }
 
     public void InputFromUi(float value)
     {
-        inputByUiButtons += value;
+        _inputByUiButtons += value;
     }
 }

@@ -9,19 +9,15 @@ public class BossBigBase : Paddle
     public float timeToSpawnBall = 0.5f;
 
     // Private fields
-    [Header("References on scene")]
+    [Header("References to my objects")]
     [SerializeField] private GameObject[] myGuns;
+    [SerializeField] private AudioSource myAudioSource;
 
     [Header("References to assets")]
     [SerializeField] private AudioClip audioShoot;
     [SerializeField] private AudioClip audioExplosion;
-
-
-    [Header("Prefabs")]
-    [SerializeField] private GameObject prefabBall;
-
-    private AudioSource myAudioSource;
-
+    [SerializeField] private Ball prefabBall;
+    
     private Vector3 positonForBall = new Vector3();
     private Vector2 directionForBall = new Vector2(-1f, 0f); //to the left
 
@@ -32,6 +28,12 @@ public class BossBigBase : Paddle
     private readonly float minTimeToSpawnBall = 0.45f;
     private readonly float maxTimeToSpawnBall = 0.65f;
 
+    private void OnValidate()
+    {
+        base.OnValidate();
+        myAudioSource ??= GetComponentInChildren<AudioSource>();
+    }
+
     private new void Awake()
     {
         base.Awake();
@@ -39,13 +41,11 @@ public class BossBigBase : Paddle
 
     public void Initialize()
     {
-        myAudioSource = GetComponentInChildren<AudioSource>();
         if (myAudioSource == null)
         {
             Debug.LogError("BossBigBase: Awake: can't find AudioSource");
         }
         myAudioSource.clip = audioShoot;
-        myAudioSource.volume = AudioManager.instance.audioSourceSounds.volume;
 
         float playerSkill = DifficultyManager.instance.GetRelativeSkillOfPlayer();
 
@@ -54,7 +54,6 @@ public class BossBigBase : Paddle
         Debug.Log($"BossBigBase: Update(): playerSkill={playerSkill} timeToSpawnBall={timeToSpawnBall}");
 
         // Add listeners to events
-        AudioManager.instance.onSoundsVolumeChange += ChangeVolumeSounds;
         EventsManager.levelStart.AddListener(StartCoroutines);
         EventsManager.levelEnd.AddListener(StopCoroutines);
 
@@ -88,8 +87,7 @@ public class BossBigBase : Paddle
 
             positonForBall = myGuns[index].transform.position;
             positonForBall.x -= 1f;
-            GameObject ball = Instantiate(prefabBall, positonForBall, Quaternion.identity);
-            Ball ballScipt = ball.GetComponent<Ball>();
+            Ball ballScipt = Instantiate(prefabBall, positonForBall, Quaternion.identity);
             ballScipt.Initialize();
             ballScipt.PushToDirection(directionForBall);
             myAudioSource.Play(); // play sound shoot
@@ -124,11 +122,6 @@ public class BossBigBase : Paddle
         Vector2 velo = rb2d.velocity;
         velo.y = movement * moveSpeed;
         rb2d.velocity = velo;
-    }
-
-    public void ChangeVolumeSounds(float volume)
-    {
-        myAudioSource.volume = volume;
     }
 
     public void Die()

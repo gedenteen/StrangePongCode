@@ -10,6 +10,7 @@ public class BootstrapLevel : MonoBehaviour
     [SerializeField] private MainPaddle leftMainPaddle;
     [SerializeField] private MainPaddle rightMainPaddle;
     [SerializeField] private BossBigBase bossBigBase;
+    [SerializeField] private BossBigBarrier bossBigBarrier;
 
     private void Awake()
     {
@@ -18,5 +19,6 @@ public class BootstrapLevel : MonoBehaviour
         if (leftMainPaddle.gameObject.activeSelf) leftMainPaddle.Initialize();
         if (rightMainPaddle.gameObject.activeSelf) rightMainPaddle.Initialize();
         if (bossBigBase.gameObject.activeSelf) bossBigBase.Initialize();
+        if (bossBigBarrier.gameObject.activeSelf) bossBigBarrier.Initialize();
     }
 }

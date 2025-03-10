@@ -14,16 +14,7 @@ public class BallAudio : MonoBehaviour
     private void Awake()
     {
         // Get values from AudioManager
-        canPlay = AudioManager.instance.canPlaySounds;
-        audioSource.volume = AudioManager.instance.audioSourceSounds.volume;
-        
-        // Add listener to event
-        AudioManager.instance.onSoundsVolumeChange += ChangeVolumeSounds;
-    }
-
-    private void OnDestroy()
-    {
-        AudioManager.instance.onSoundsVolumeChange -= ChangeVolumeSounds;
+        canPlay = AudioManager.instance.CanPlaySounds;
     }
 
     public void PlayResetBallSound()
@@ -37,10 +28,5 @@ public class BallAudio : MonoBehaviour
     public void PlayPaddleSound()
     {
         if (canPlay) audioSource.PlayOneShot(paddleSound);
-    }
-
-    public void ChangeVolumeSounds(float volume)
-    {
-        audioSource.volume = volume;
     }
 }

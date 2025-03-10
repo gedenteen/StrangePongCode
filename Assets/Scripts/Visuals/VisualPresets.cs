@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Localization;
 
 [CreateAssetMenu(fileName = "VisualPresets", menuName = "ScriptableObjects/Create VisualPresets asset")]
 public class VisualPresets : ScriptableObject
@@ -36,7 +37,8 @@ public class VisualPresets : ScriptableObject
 [Serializable]
 public class VisualPreset
 {
-    public string Name;
+    public VisualPresetId Id;
+    public LocalizedString LocalizedName;
     public Color PrimaryBrightColor = Color.white;
     public Color PrimaryDarkColor = Color.white;
     public Color SecondaryBrightColor = Color.white;

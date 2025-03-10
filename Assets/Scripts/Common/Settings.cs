@@ -4,6 +4,8 @@ using UnityEngine.UI;
 using TMPro;
 using System.Collections.Generic;
 using UnityEngine.Events;
+using UnityEngine.Audio;
+using Zenject;
 
 public class Settings : MonoBehaviour
 {
@@ -13,7 +15,7 @@ public class Settings : MonoBehaviour
 
     [Header("References to assets")]
     [SerializeField] private PostProcessProfile postProcessProfile;
-    [SerializeField] private VisualPresets _visualPresets;
+    [SerializeField] private AudioMixer _audioMixer;
 
     [Header("References to scene objects")]
     [SerializeField] private Slider sliderMusicVolume;
@@ -24,14 +26,20 @@ public class Settings : MonoBehaviour
     [SerializeField] private TextMeshProUGUI textBloom;
     [SerializeField] private Slider sliderChromaticAberration;
     [SerializeField] private TextMeshProUGUI textChromaticAberration;
+    [SerializeField] private Slider _sliderMaxFps;
+    [SerializeField] private TextMeshProUGUI _textMaxFps;
     [SerializeField] private TMP_Dropdown resolutionDropdown;
     [SerializeField] private Toggle toggleFullScreen;
     [SerializeField] private TMP_Dropdown _dropdownForVisualPresets;
+    
+    [Inject] private VisualPresets _visualPresets;
 
     // Private fields
     private bool isInitialized = false;
     private Bloom bloom;
     private ChromaticAberration chromaticAberration;
+    private float _maxValueOfBloom = 30f;
+    private float _maxValueOfChromaticAberraton = 1f;
 
     // Parameters
     private ParameterMusicVolume _parameterMusicVolume;
@@ -41,6 +49,7 @@ public class Settings : MonoBehaviour
     private ParameterResolutionIndex _parameterResolutionIndex;
     private ParameterFullScreen _parameterFullScreen;
     private ParameterVisualPresetIndex _parameterVisualPresetIndex;
+    private ParameterMaxFpsIndex _parameterMaxFpsIndex;
 
     private void Awake()
     {
@@ -63,6 +72,7 @@ public class Settings : MonoBehaviour
         _parameterResolutionIndex = new ParameterResolutionIndex();
         _parameterFullScreen = new ParameterFullScreen();
         _parameterVisualPresetIndex = new ParameterVisualPresetIndex();
+        _parameterMaxFpsIndex = new ParameterMaxFpsIndex();
 
         // Get Bloom component
         postProcessProfile.TryGetSettings<Bloom>(out bloom);
@@ -87,9 +97,11 @@ public class Settings : MonoBehaviour
         }        
 
         FillResolutionsDropdown();
-        FillDropdownForVisualPresets();
+    }
 
-        // Set values
+    private void Start()
+    {
+        // Set values (changes audio mixer must be set on Start)
         ChangeVolumeMusic(_parameterMusicVolume.GetCurrentValue());
         sliderMusicVolume.value = _parameterMusicVolume.GetCurrentValue();
         ChangeVolumeSounds(_parameterSoundsVolume.GetCurrentValue());
@@ -98,6 +110,8 @@ public class Settings : MonoBehaviour
         sliderBloom.value = _parameterBloomIntensity.GetCurrentValue();
         ChangeChromaticAberrationIntensity(_parameterChromaticAberrationIntensity.GetCurrentValue());
         sliderChromaticAberration.value = _parameterChromaticAberrationIntensity.GetCurrentValue();
+        SetMaxFpsIndex(_parameterMaxFpsIndex.GetCurrentValue());
+        _sliderMaxFps.value = _parameterMaxFpsIndex.GetCurrentValue();
         SetResolution(_parameterResolutionIndex.GetCurrentValue());
         SetFullScreen(_parameterFullScreen.GetCurrentValue());
 
@@ -108,32 +122,34 @@ public class Settings : MonoBehaviour
 
     #region Set methods
 
-    public void ChangeVolumeMusic(float value)
+    public void ChangeVolumeMusic(float volume)
     {
-        AudioManager.instance.ChangeVolumeMusic(value);
-        textMusicVolume.text = $"{Mathf.RoundToInt(value * 100)}%";
+        //Debug.Log($"Settings: ChangeVolumeMusic: volume={volume}");
+        _audioMixer.SetFloat("MusicVolume", Mathf.Log10(volume) * 20);
+        textMusicVolume.text = $"{Mathf.RoundToInt(volume * 100)}%";
 
         if (isInitialized)
         {
-            _parameterMusicVolume.SetNewValue(value);
+            _parameterMusicVolume.SetNewValue(volume);
         }
     }
 
-    public void ChangeVolumeSounds(float value)
+    public void ChangeVolumeSounds(float volume)
     {
-        AudioManager.instance.ChangeVolumeSounds(value);
-        textSoundsVolume.text = $"{Mathf.RoundToInt(value * 100)}%";
+        //Debug.Log($"Settings: ChangeVolumeSounds: volume={volume}");
+        _audioMixer.SetFloat("SoundsVolume", Mathf.Log10(volume) * 20);
+        textSoundsVolume.text = $"{Mathf.RoundToInt(volume * 100)}%";
 
         if (isInitialized)
         {
-            _parameterSoundsVolume.SetNewValue(value);
+            _parameterSoundsVolume.SetNewValue(volume);
         }
     }
 
     public void ChangeBloomValue(float value)
     {
         bloom.intensity.value = value;
-        textBloom.text = $"{Mathf.RoundToInt((value / 40) * 100)}%";
+        textBloom.text = $"{Mathf.RoundToInt((value / _maxValueOfBloom) * 100)}%";
 
         if (isInitialized)
         {
@@ -144,7 +160,7 @@ public class Settings : MonoBehaviour
     public void ChangeChromaticAberrationIntensity(float value)
     {
         chromaticAberration.intensity.value = value;
-        textChromaticAberration.text = $"{Mathf.RoundToInt((value / 40) * 100)}%";
+        textChromaticAberration.text = $"{Mathf.RoundToInt((value / _maxValueOfChromaticAberraton) * 100)}%";
 
         if (isInitialized)
         {
@@ -184,6 +200,44 @@ public class Settings : MonoBehaviour
         }
     }
 
+    public void SetMaxFpsIndex(float index)
+    {
+        //Debug.Log($"Settings: SetMaxFpsIndex: index={index}");
+
+        QualitySettings.vSyncCount = 0; // VSync off
+
+        if (index == _sliderMaxFps.maxValue)
+        {
+            Application.targetFrameRate = -1;
+            _textMaxFps.text = "No limit";
+        }
+        else
+        {
+            int targetFps = ((int)index + 1) * 30;
+            Application.targetFrameRate = targetFps;
+            _textMaxFps.text = targetFps.ToString();
+        }
+
+        if (isInitialized)
+        {
+            _parameterMaxFpsIndex.SetNewValue((byte)index);
+        }
+    }
+
+    public void SetChromaticAverrationValue(float value)
+    {
+        value = Mathf.Clamp01(value);
+        value *= _maxValueOfChromaticAberraton;
+        sliderChromaticAberration.value = value;
+    }
+
+    public void SetBloomValue(float value)
+    {
+        value = Mathf.Clamp01(value);
+        value *= _maxValueOfBloom;
+        sliderBloom.value = value;
+    }
+
     #endregion
 
     #region Get methods 
@@ -201,20 +255,6 @@ public class Settings : MonoBehaviour
     {
         resolutionDropdown.ClearOptions();
         resolutionDropdown.AddOptions(_parameterResolutionIndex.GetAvailableResolutions());
-    }
-
-    private void FillDropdownForVisualPresets()
-    {
-        _dropdownForVisualPresets.ClearOptions();
-
-        var options = new List<string>();
-
-        foreach (var preset in _visualPresets.ListOfPresets)
-        {
-            options.Add(preset.Name);
-        }
-
-        _dropdownForVisualPresets.AddOptions(options);
     }
 
     public void UpdateUi()

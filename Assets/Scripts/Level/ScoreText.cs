@@ -5,13 +5,13 @@ using TMPro;
 
 public class ScoreText : MonoBehaviour
 {
-    private TextMeshProUGUI text;
-    private Animator animator;
+    [SerializeField] private TextMeshProUGUI text;
+    [SerializeField] private Animator animator;
 
-    private void Awake()
+    private void OnValidate()
     {
-        text = GetComponent<TextMeshProUGUI>();
-        animator = GetComponent<Animator>();
+        text ??= GetComponent<TextMeshProUGUI>();
+        animator ??= GetComponent<Animator>();
     }
 
     public void SetScore(int value)

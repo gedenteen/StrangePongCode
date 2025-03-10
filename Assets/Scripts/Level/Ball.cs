@@ -1,6 +1,9 @@
 // using System;
 using System.Collections;
+using System.Collections.Generic;
+using UnityEditor;
 using UnityEngine;
+using Zenject;
 
 public enum BallState
 {
@@ -13,9 +16,13 @@ public class Ball : MonoBehaviour
 {
     /// Public fields
     [HideInInspector] public BallState state = BallState.usual;
-    [HideInInspector] public Rigidbody2D rb2d;
-    [HideInInspector] public BallAudio ballAudio;
-    [HideInInspector] public ParticleSystem collisionParticle;
+
+    [Header("References to my components")]
+    [SerializeField] public Rigidbody2D rb2d;
+    [SerializeField] public BallAudio ballAudio;
+    [SerializeField] public ParticleSystem collisionParticle;
+    [SerializeField] private SpriteRenderer spriteRenderer;
+    [SerializeField] private TrailRenderer trailRenderer;
 
     [Header("References to assets")]
     [SerializeField] private GameObject prefabBall;
@@ -27,16 +34,21 @@ public class Ball : MonoBehaviour
     [SerializeField] private int rotationCount = 5; /// Number of rotations
     [SerializeField] private float maxStartY = 4f;
     [SerializeField] private float startMoveSpeed = 5f;
-    [SerializeField] private float speedSummand = 1f;
     [SerializeField] private int countOfParicles = 16;
 
+    [Inject] private ConfigOfLevels _configOfLevels;
+
     /// Private fields
-    private SpriteRenderer spriteRenderer;
-    private TrailRenderer trailRenderer;
     private float startX = 0f;
     private float currentMoveSpeed = 0f;
     private bool makeDangerousAfterHit = false;
     private bool forciblyChangedDirection = false;
+    private bool _bossBigBarrierHere = false;
+
+    private void OnValidate()
+    {
+        FindComponents();
+    }
 
     private void OnDestroy()
     {
@@ -45,18 +57,19 @@ public class Ball : MonoBehaviour
 
     public void FindComponents()
     {
-        rb2d = GetComponentInChildren<Rigidbody2D>();
-        collisionParticle = GetComponentInChildren<ParticleSystem>();
-        spriteRenderer = GetComponent<SpriteRenderer>();
-        trailRenderer = GetComponentInChildren<TrailRenderer>();
+        rb2d ??= GetComponentInChildren<Rigidbody2D>();
+        ballAudio ??= GetComponent<BallAudio>();
+        collisionParticle ??= GetComponentInChildren<ParticleSystem>();
+        spriteRenderer ??= GetComponent<SpriteRenderer>();
+        trailRenderer ??= GetComponentInChildren<TrailRenderer>();
     }
 
-    public void Initialize()
+    private void HandleLevelModifiers()
     {
-        FindComponents();
-
         var levelModifiers = LevelManager.instance.GetLevelModifiers();
-        if (levelModifiers.ContainsKey(LevelModifier.MakeBallDangerousAfterHitting) && levelModifiers[LevelModifier.MakeBallDangerousAfterHitting] == 1)
+
+        if (levelModifiers.ContainsKey(LevelModifier.MakeBallDangerousAfterHitting)
+            && levelModifiers[LevelModifier.MakeBallDangerousAfterHitting] == 1)
         {
             makeDangerousAfterHit = true;
         }
@@ -65,6 +78,18 @@ public class Ball : MonoBehaviour
             GameManager.instance.onReset += ResetBall;
         }
 
+        if (levelModifiers.ContainsKey(LevelModifier.BossBigBarrier)
+            && levelModifiers[LevelModifier.BossBigBarrier] == 1)
+        {
+            _bossBigBarrierHere = true;
+        }
+    }
+
+    public void Initialize()
+    {
+        FindComponents();
+        HandleLevelModifiers();
+        
         EventsManager.levelStart.AddListener(Push);
         EventsManager.levelEnd.AddListener(() => { GameManager.instance.onReset -= ResetBall; });
         EventsManager.disableSoundForBalls.AddListener(() => { ballAudio.gameObject.SetActive(false); });
@@ -164,7 +189,8 @@ public class Ball : MonoBehaviour
         if (scoreZone != null)
         {
             GameManager.instance.OnScoreZoneReached(state, scoreZone.id);
-            if (LevelManager.instance.GetLevelModifiers()[LevelModifier.BossBigBase] != 0)
+            Dictionary<LevelModifier, byte> levelMods = LevelManager.instance.GetLevelModifiers();
+            if (levelMods.ContainsKey(LevelModifier.BossBigBase) && levelMods[LevelModifier.BossBigBase] != 0)
             {
                 Destroy(gameObject);
             }
@@ -177,42 +203,7 @@ public class Ball : MonoBehaviour
         //Debug.Log($"Ball: OnCollisionEnter2D(): paddle is null? {paddle == null}");
         if (paddle != null)
         {
-            ballAudio.PlayPaddleSound();
-            EmitParticle(countOfParicles / 4);
-
-            if (state == BallState.usual)
-            {
-                currentMoveSpeed += speedSummand;
-                rb2d.velocity = rb2d.velocity.normalized * currentMoveSpeed;
-                //Debug.Log($"Ball: OnCollisionEnter2D(): rb2d.velocity={rb2d.velocity} currentMoveSpeed={currentMoveSpeed} rb2d.velocity.magnitude={rb2d.velocity.magnitude}");
-
-                // Check for situation when players dispersed high speed of the Ball
-                if (currentMoveSpeed > 70f && !forciblyChangedDirection)
-                {
-                    Vector2 position = transform.position;
-                    position.x = 0f;
-                    transform.position = position;
-                    StartCoroutine(StopAndMakeNewDirection());
-                    forciblyChangedDirection = true;
-                }
-
-                if (makeDangerousAfterHit)
-                {
-                    MakeItDangerous();
-                }
-            }
-            else if (state == BallState.dangerous)
-            {
-                GameManager.instance.DecreaseHpOfPlayer(paddle.id);
-                if (makeDangerousAfterHit)
-                {
-                    DestroyMe();
-                }
-                else
-                {
-                    MakeItUsual();
-                }
-            }
+            OnCollisionWithPaddle(paddle);
         }
 
         Wall wall = collision.collider.GetComponent<Wall>();
@@ -220,6 +211,87 @@ public class Ball : MonoBehaviour
         {
             ballAudio.PlayWallSound();
             EmitParticle(countOfParicles / 4);
+        }
+    }
+
+    private void OnCollisionWithPaddle(Paddle paddle)
+    {
+        ballAudio.PlayPaddleSound();
+        EmitParticle(countOfParicles / 4);
+
+        if (state == BallState.usual)
+        {
+            if (_bossBigBarrierHere)
+            {
+                BossBigBarrier bossBigBarrier;
+                if (paddle.TryGetComponent<BossBigBarrier>(out bossBigBarrier))
+                {
+                    HandleCollisionWithBossBigBarrier(bossBigBarrier);
+                }
+                else
+                {
+                    HandleUsualCollisionWithPaddle(paddle);
+                }
+            }
+            else
+            {
+                HandleUsualCollisionWithPaddle(paddle);
+            }
+        }
+        else if (state == BallState.dangerous)
+        {
+            GameManager.instance.DecreaseHpOfPlayer(paddle.id);
+            if (makeDangerousAfterHit)
+            {
+                DestroyMe();
+            }
+            else
+            {
+                MakeItUsual();
+            }
+        }
+    }
+
+    private void HandleUsualCollisionWithPaddle(Paddle paddle)
+    {
+        if (paddle.BallAccelerator)
+        {
+            currentMoveSpeed += paddle.BallAccelerator.GetSpeedSummand();
+            EventsManager.resetSpeedSummandForBallAccelerator?.Invoke(paddle.id);
+        }
+        rb2d.velocity = rb2d.velocity.normalized * currentMoveSpeed;
+        //Debug.Log($"Ball: OnCollisionEnter2D(): rb2d.velocity={rb2d.velocity} currentMoveSpeed={currentMoveSpeed} rb2d.velocity.magnitude={rb2d.velocity.magnitude}");
+
+        // Check for situation when players dispersed high speed of the Ball
+        if (currentMoveSpeed > 70f && !forciblyChangedDirection)
+        {
+            Vector2 position = transform.position;
+            position.x = 0f;
+            transform.position = position;
+            StartCoroutine(StopAndMakeNewDirection());
+            forciblyChangedDirection = true;
+        }
+
+        if (makeDangerousAfterHit)
+        {
+            MakeItDangerous();
+        }
+    }
+
+    private void HandleCollisionWithBossBigBarrier(BossBigBarrier bossBigBarrier)
+    {
+        if (currentMoveSpeed >= _configOfLevels.MinSpeedForHitBigBarrier)
+        {
+            GameManager.instance.DecreaseHpOfPlayer(bossBigBarrier.id);
+            if (GameManager.instance.scorePlayer2 > 0)
+            {
+                ResetBall();
+            }
+            bossBigBarrier.ApplyDamage();
+        }
+        else
+        {
+            bossBigBarrier.ApplyWeakHit();
         }
     }
 
@@ -271,7 +343,10 @@ public class Ball : MonoBehaviour
         ballComponent.rb2d.velocity = rb2d.velocity;//ballComponent.PushToDirection(rb2d.velocity);
 
         Debug.Log($"Ball: CreateGhostAndChangeDirection: old velocity={rb2d.velocity.magnitude}");
-        currentMoveSpeed = startMoveSpeed;
+        
+        // Set default speed
+        // currentMoveSpeed = startMoveSpeed;
+        
         // Change direction of this Ball
         Push();
         Debug.Log($"Ball: CreateGhostAndChangeDirection: new velocity={rb2d.velocity.magnitude}");
